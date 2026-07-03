@@ -92,7 +92,7 @@ jobs:
           echo "GITEE_AUTH_DIR=$auth_dir" >> "$GITHUB_ENV"
           echo "GIT_ASKPASS=$auth_dir/askpass.sh" >> "$GITHUB_ENV"
           echo "GIT_TERMINAL_PROMPT=0" >> "$GITHUB_ENV"
-          echo "GOPROXY=direct" >> "$GITHUB_ENV"
+          echo "GOTOOLCHAIN=local" >> "$GITHUB_ENV"
           echo "GOPRIVATE=gitee.com/quxintiaodong/quxin-common" >> "$GITHUB_ENV"
           echo "GONOSUMDB=gitee.com/quxintiaodong/quxin-common" >> "$GITHUB_ENV"
 
@@ -122,16 +122,17 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: ${{ env.SOURCE_DIR }}/go.mod
+          go-version: "1.24.4"
           cache-dependency-path: ${{ env.SOURCE_DIR }}/go.sum
 
       - name: Build binary
         shell: bash
+        env:
+          GOTOOLCHAIN: local
         run: |
           set -euo pipefail
 
           cd "$SOURCE_DIR"
-          go env -w GOPROXY=direct
           go env -w GOPRIVATE=gitee.com/quxintiaodong/quxin-common
           go env -w GONOSUMDB=gitee.com/quxintiaodong/quxin-common
           rm -rf "$(go env GOPATH)/pkg/mod/cache/vcs"

@@ -63,8 +63,21 @@ jobs:
           printf '%s' "$GITEE_TOKEN" | tr -d '\r\n' > "$auth_dir/token"
           chmod 600 "$auth_dir/username" "$auth_dir/token"
 
+          username="$(cat "$auth_dir/username")"
+          token="$(cat "$auth_dir/token")"
+          auth_base="https://${username}:${token}@gitee.com/"
+
+          echo "::add-mask::$username"
+          echo "::add-mask::$token"
+          echo "::add-mask::$auth_base"
+
+          git config --global url."$auth_base".insteadOf "https://gitee.com/"
+          git config --global url."$auth_base".insteadOf "http://gitee.com/"
+
           echo "GITEE_AUTH_DIR=$auth_dir" >> "$GITHUB_ENV"
           echo "GIT_TERMINAL_PROMPT=0" >> "$GITHUB_ENV"
+          echo "GOPRIVATE=gitee.com/*" >> "$GITHUB_ENV"
+          echo "GONOSUMDB=gitee.com/*" >> "$GITHUB_ENV"
 
       - name: Clone source repository
         shell: bash

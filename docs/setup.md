@@ -10,22 +10,26 @@ Recommended repository:
 
 ## 2. Add secret
 
-Add `CI_REPO_TOKEN` in:
+Add required source checkout secrets in:
 
 `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`
 
-The token must be able to read every private `yongxin100` repository listed in `config/repositories.json`.
+- `GITEE_SSH_PRIVATE_KEY`: SSH private key that can read the private Gitee repository.
+- `QUXIN_MINIAPI_GIT_URL`: private Gitee SSH URL.
 
-## 3. Add repositories
+For Docker image publishing, add:
 
-Add one entry per repository in `config/repositories.json`.
+- `QX_REGISTRY_HOST`
+- `QX_REGISTRY_USERNAME`
+- `QX_REGISTRY_PASSWORD`
+- `QX_MINIAPI_IMAGE_NAME`
 
-Keep entries disabled until their build commands are verified:
+## 3. Add project workflows
 
-```json
-"enabled": false
-```
+Add one workflow file per project under `.github/workflows/`.
+
+Keep private repository URLs, token values, registry hosts, and deploy targets in secrets instead of workflow files.
 
 ## 4. Run
 
-Use the manual workflow dispatch first. After the matrix works, add scheduled runs or repository dispatch triggers as needed.
+Use the manual workflow dispatch first. After a project workflow works, add scheduled runs or repository dispatch triggers as needed.

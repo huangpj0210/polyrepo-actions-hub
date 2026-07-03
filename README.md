@@ -21,7 +21,7 @@ Required secrets:
 - `GITEE_TOKEN`: Gitee personal access token with read access to the source repository.
 - `QUXIN_MINIAPI_GIT_URL`: private Gitee HTTPS URL.
 
-Do not include the token in `QUXIN_MINIAPI_GIT_URL`. Keep it as a plain HTTPS repository URL.
+Do not include the token in `QUXIN_MINIAPI_GIT_URL`. Keep it as a plain HTTPS repository URL; the workflow injects the token at runtime using Gitee's `https://<user>:<token>@gitee.com/<owner>/<repo>.git` format.
 
 Optional deploy secrets:
 

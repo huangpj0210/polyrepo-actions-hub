@@ -63,19 +63,7 @@ jobs:
           printf '%s' "$GITEE_TOKEN" | tr -d '\r\n' > "$auth_dir/token"
           chmod 600 "$auth_dir/username" "$auth_dir/token"
 
-          cat > "$auth_dir/askpass.sh" <<'EOF'
-          #!/usr/bin/env bash
-          auth_dir="${GITEE_AUTH_DIR:?}"
-          case "$1" in
-            *Username*) cat "$auth_dir/username" ;;
-            *Password*) cat "$auth_dir/token" ;;
-            *) printf '\n' ;;
-          esac
-          EOF
-          chmod 700 "$auth_dir/askpass.sh"
-
           echo "GITEE_AUTH_DIR=$auth_dir" >> "$GITHUB_ENV"
-          echo "GIT_ASKPASS=$auth_dir/askpass.sh" >> "$GITHUB_ENV"
           echo "GIT_TERMINAL_PROMPT=0" >> "$GITHUB_ENV"
 
       - name: Clone source repository
@@ -86,10 +74,19 @@ jobs:
         run: |
           set -euo pipefail
 
+          username="$(cat "$GITEE_AUTH_DIR/username")"
+          token="$(cat "$GITEE_AUTH_DIR/token")"
+          repo_path="${SOURCE_GIT_URL#https://gitee.com/}"
+          auth_url="https://${username}:${token}@gitee.com/${repo_path}"
+
+          echo "::add-mask::$username"
+          echo "::add-mask::$token"
+          echo "::add-mask::$auth_url"
+
           if [ -n "$CHECKOUT_REF" ]; then
-            git clone --depth 1 --branch "$CHECKOUT_REF" "$SOURCE_GIT_URL" "$SOURCE_DIR"
+            git clone --depth 1 --branch "$CHECKOUT_REF" "$auth_url" "$SOURCE_DIR"
           else
-            git clone --depth 1 "$SOURCE_GIT_URL" "$SOURCE_DIR"
+            git clone --depth 1 "$auth_url" "$SOURCE_DIR"
           fi
 
       - name: Setup Go

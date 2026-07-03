@@ -14,11 +14,11 @@ Add required source checkout secrets in:
 
 `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`
 
-- `GITEE_SSH_PRIVATE_KEY`: SSH private key that can read the private Gitee repository.
-- `GITEE_SSH_PRIVATE_KEY_B64`: optional base64-encoded SSH private key. Prefer this if multiline secret copy/paste breaks the key.
-- `QUXIN_MINIAPI_GIT_URL`: private Gitee SSH URL.
+- `GITEE_USERNAME`: Gitee username that owns the token.
+- `GITEE_TOKEN`: Gitee personal access token with read access to the private Gitee repository.
+- `QUXIN_MINIAPI_GIT_URL`: private Gitee HTTPS URL.
 
-Use either `GITEE_SSH_PRIVATE_KEY` or `GITEE_SSH_PRIVATE_KEY_B64`. The key must be an unencrypted private key with matching read access in Gitee.
+Do not include the token in `QUXIN_MINIAPI_GIT_URL`. Keep it as a plain HTTPS repository URL.
 
 For Docker image publishing, add:
 

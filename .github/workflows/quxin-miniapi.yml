@@ -28,17 +28,17 @@ jobs:
       SOURCE_DIR: source
       BINARY_NAME: quxin-miniapi
     steps:
-      - name: Setup SSH for Gitee
+      - name: Configure Gitee token auth
         shell: bash
         env:
-          GITEE_SSH_PRIVATE_KEY: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
-          GITEE_SSH_PRIVATE_KEY_B64: ${{ secrets.GITEE_SSH_PRIVATE_KEY_B64 }}
+          GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           SOURCE_GIT_URL: ${{ secrets.QUXIN_MINIAPI_GIT_URL }}
         run: |
           set -euo pipefail
 
-          if [ -z "$GITEE_SSH_PRIVATE_KEY" ] && [ -z "$GITEE_SSH_PRIVATE_KEY_B64" ]; then
-            echo "Missing secret: GITEE_SSH_PRIVATE_KEY or GITEE_SSH_PRIVATE_KEY_B64" >&2
+          if [ -z "$GITEE_USERNAME" ] || [ -z "$GITEE_TOKEN" ]; then
+            echo "Missing secret: GITEE_USERNAME or GITEE_TOKEN" >&2
             exit 1
           fi
 
@@ -47,37 +47,36 @@ jobs:
             exit 1
           fi
 
-          mkdir -p ~/.ssh
+          case "$SOURCE_GIT_URL" in
+            https://gitee.com/*) ;;
+            *)
+              echo "QUXIN_MINIAPI_GIT_URL must be an HTTPS Gitee URL when using token auth." >&2
+              exit 1
+              ;;
+          esac
 
-          if [ -n "$GITEE_SSH_PRIVATE_KEY_B64" ]; then
-            printf '%s' "$GITEE_SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/gitee_key
-          else
-            printf '%b\n' "$GITEE_SSH_PRIVATE_KEY" > ~/.ssh/gitee_key
-          fi
+          auth_dir="$RUNNER_TEMP/gitee-auth"
+          mkdir -p "$auth_dir"
+          chmod 700 "$auth_dir"
 
-          tr -d '\r' < ~/.ssh/gitee_key > ~/.ssh/gitee_key.clean
-          mv ~/.ssh/gitee_key.clean ~/.ssh/gitee_key
-          chmod 600 ~/.ssh/gitee_key
-
-          if ! ssh-keygen -y -P "" -f ~/.ssh/gitee_key > /dev/null; then
-            echo "The Gitee SSH private key secret is not a valid unencrypted private key." >&2
-            echo "Use the full private key, including BEGIN/END lines, or set GITEE_SSH_PRIVATE_KEY_B64 to its base64 value." >&2
-            exit 1
-          fi
-
-          ssh-keyscan gitee.com >> ~/.ssh/known_hosts
-
-          cat > ~/.ssh/config <<'EOF'
-          Host gitee.com
-            HostName gitee.com
-            User git
-            IdentityFile ~/.ssh/gitee_key
-            IdentitiesOnly yes
+          cat > "$auth_dir/askpass.sh" <<'EOF'
+          #!/usr/bin/env bash
+          case "$1" in
+            *Username*) printf '%s\n' "$GITEE_USERNAME" ;;
+            *Password*) printf '%s\n' "$GITEE_TOKEN" ;;
+            *) printf '\n' ;;
+          esac
           EOF
+          chmod 700 "$auth_dir/askpass.sh"
+
+          echo "GIT_ASKPASS=$auth_dir/askpass.sh" >> "$GITHUB_ENV"
+          echo "GIT_TERMINAL_PROMPT=0" >> "$GITHUB_ENV"
 
       - name: Clone source repository
         shell: bash
         env:
+          GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           SOURCE_GIT_URL: ${{ secrets.QUXIN_MINIAPI_GIT_URL }}
           CHECKOUT_REF: ${{ inputs.ref }}
         run: |

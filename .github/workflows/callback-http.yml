@@ -146,12 +146,12 @@ jobs:
           REGISTRY_HOST: ${{ vars.IM_CALLBACK_HTTP_REGISTRY_HOST || secrets.IM_CALLBACK_HTTP_REGISTRY_HOST || vars.QX_REGISTRY_HOST || secrets.QX_REGISTRY_HOST }}
           REGISTRY_USERNAME: ${{ secrets.IM_CALLBACK_HTTP_REGISTRY_USERNAME || secrets.QX_REGISTRY_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.IM_CALLBACK_HTTP_REGISTRY_PASSWORD || secrets.QX_REGISTRY_PASSWORD }}
-          IMAGE_NAME: ${{ vars.IM_CALLBACK_HTTP_IMAGE_NAME || secrets.IM_CALLBACK_HTTP_IMAGE_NAME }}
+          QUXIN_CALLBACK_HTTP_IMAGE_NAME: ${{ vars.QUXIN_CALLBACK_HTTP_IMAGE_NAME || secrets.QUXIN_CALLBACK_HTTP_IMAGE_NAME }}
           INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
 
-          if [ -z "$REGISTRY_HOST" ] || [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_PASSWORD" ] || [ -z "$IMAGE_NAME" ]; then
+          if [ -z "$REGISTRY_HOST" ] || [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_PASSWORD" ] || [ -z "$QUXIN_CALLBACK_HTTP_IMAGE_NAME" ]; then
             echo "Missing registry configuration for im-callback-http" >&2
             exit 1
           fi
@@ -164,7 +164,7 @@ jobs:
             image_tag="$source_sha"
           fi
 
-          image="$REGISTRY_HOST/$IMAGE_NAME:$image_tag"
+          image="$REGISTRY_HOST/$QUXIN_CALLBACK_HTTP_IMAGE_NAME:$image_tag"
           echo "Docker image: $image"
           echo "Source commit: $source_sha"
 

@@ -15,11 +15,11 @@ Workflow:
 
 `.github/workflows/miniapi.yml`
 
-## im-callback-http
+## callback-http
 
 Workflow:
 
-`.github/workflows/im-callback-http.yml`
+`.github/workflows/callback-http.yml`
 
 ## Run manually
 

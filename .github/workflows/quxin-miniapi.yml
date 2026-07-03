@@ -59,24 +59,28 @@ jobs:
           mkdir -p "$auth_dir"
           chmod 700 "$auth_dir"
 
+          printf '%s' "$GITEE_USERNAME" | tr -d '\r\n' > "$auth_dir/username"
+          printf '%s' "$GITEE_TOKEN" | tr -d '\r\n' > "$auth_dir/token"
+          chmod 600 "$auth_dir/username" "$auth_dir/token"
+
           cat > "$auth_dir/askpass.sh" <<'EOF'
           #!/usr/bin/env bash
+          auth_dir="${GITEE_AUTH_DIR:?}"
           case "$1" in
-            *Username*) printf '%s\n' "$GITEE_USERNAME" ;;
-            *Password*) printf '%s\n' "$GITEE_TOKEN" ;;
+            *Username*) cat "$auth_dir/username" ;;
+            *Password*) cat "$auth_dir/token" ;;
             *) printf '\n' ;;
           esac
           EOF
           chmod 700 "$auth_dir/askpass.sh"
 
+          echo "GITEE_AUTH_DIR=$auth_dir" >> "$GITHUB_ENV"
           echo "GIT_ASKPASS=$auth_dir/askpass.sh" >> "$GITHUB_ENV"
           echo "GIT_TERMINAL_PROMPT=0" >> "$GITHUB_ENV"
 
       - name: Clone source repository
         shell: bash
         env:
-          GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           SOURCE_GIT_URL: ${{ secrets.QUXIN_MINIAPI_GIT_URL }}
           CHECKOUT_REF: ${{ inputs.ref }}
         run: |

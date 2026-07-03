@@ -32,12 +32,13 @@ jobs:
         shell: bash
         env:
           GITEE_SSH_PRIVATE_KEY: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
+          GITEE_SSH_PRIVATE_KEY_B64: ${{ secrets.GITEE_SSH_PRIVATE_KEY_B64 }}
           SOURCE_GIT_URL: ${{ secrets.QUXIN_MINIAPI_GIT_URL }}
         run: |
           set -euo pipefail
 
-          if [ -z "$GITEE_SSH_PRIVATE_KEY" ]; then
-            echo "Missing secret: GITEE_SSH_PRIVATE_KEY" >&2
+          if [ -z "$GITEE_SSH_PRIVATE_KEY" ] && [ -z "$GITEE_SSH_PRIVATE_KEY_B64" ]; then
+            echo "Missing secret: GITEE_SSH_PRIVATE_KEY or GITEE_SSH_PRIVATE_KEY_B64" >&2
             exit 1
           fi
 
@@ -47,8 +48,23 @@ jobs:
           fi
 
           mkdir -p ~/.ssh
-          printf '%s\n' "$GITEE_SSH_PRIVATE_KEY" > ~/.ssh/gitee_key
+
+          if [ -n "$GITEE_SSH_PRIVATE_KEY_B64" ]; then
+            printf '%s' "$GITEE_SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/gitee_key
+          else
+            printf '%b\n' "$GITEE_SSH_PRIVATE_KEY" > ~/.ssh/gitee_key
+          fi
+
+          tr -d '\r' < ~/.ssh/gitee_key > ~/.ssh/gitee_key.clean
+          mv ~/.ssh/gitee_key.clean ~/.ssh/gitee_key
           chmod 600 ~/.ssh/gitee_key
+
+          if ! ssh-keygen -y -P "" -f ~/.ssh/gitee_key > /dev/null; then
+            echo "The Gitee SSH private key secret is not a valid unencrypted private key." >&2
+            echo "Use the full private key, including BEGIN/END lines, or set GITEE_SSH_PRIVATE_KEY_B64 to its base64 value." >&2
+            exit 1
+          fi
+
           ssh-keyscan gitee.com >> ~/.ssh/known_hosts
 
           cat > ~/.ssh/config <<'EOF'

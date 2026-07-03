@@ -18,7 +18,10 @@ Workflow:
 Required secrets:
 
 - `GITEE_SSH_PRIVATE_KEY`: SSH private key that can read the Gitee repository.
+- `GITEE_SSH_PRIVATE_KEY_B64`: optional base64-encoded SSH private key. Prefer this if multiline secret copy/paste breaks the key.
 - `QUXIN_MINIAPI_GIT_URL`: private Gitee SSH URL.
+
+Use either `GITEE_SSH_PRIVATE_KEY` or `GITEE_SSH_PRIVATE_KEY_B64`. The key must be an unencrypted private key, not a public key.
 
 Optional deploy secrets:
 

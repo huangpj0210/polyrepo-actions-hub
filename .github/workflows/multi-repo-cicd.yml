@@ -1,0 +1,97 @@
+name: Multi-repo CI/CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Repository target name from config/repositories.json, or all"
+        required: true
+        default: "all"
+      ref:
+        description: "Optional branch, tag, or commit override"
+        required: false
+        default: ""
+      deploy:
+        description: "Run deploy stage after successful builds"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout hub repository
+        uses: actions/checkout@v4
+
+      - name: Build target matrix
+        id: matrix
+        shell: bash
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+
+          target="$TARGET"
+          matrix="$(jq -c --arg target "$target" '
+            [
+              .repositories[]
+              | select(.enabled == true)
+              | select($target == "all" or .name == $target)
+            ]
+          ' config/repositories.json)"
+
+          if [ "$matrix" = "[]" ]; then
+            echo "No enabled repository matched target: $target" >&2
+            exit 1
+          fi
+
+          echo "matrix={\"include\":$matrix}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ inputs.ref || matrix.default_ref }}
+          token: ${{ secrets.CI_REPO_TOKEN }}
+          path: source
+
+      - name: Run configured build
+        shell: bash
+        env:
+          BUILD_STEPS: ${{ toJson(matrix.build) }}
+          WORKDIR: ${{ matrix.workdir }}
+        run: |
+          set -euo pipefail
+
+          cd "source/$WORKDIR"
+          echo "$BUILD_STEPS" | jq -r '.[]' | while IFS= read -r command; do
+            echo "::group::$command"
+            bash -lc "$command"
+            echo "::endgroup::"
+          done
+
+  deploy:
+    name: Deploy
+    needs: build
+    if: ${{ inputs.deploy == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deployment placeholder
+        shell: bash
+        run: |
+          echo "Add deployment steps here, or split deploy logic into reusable workflows."

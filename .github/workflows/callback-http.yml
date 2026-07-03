@@ -133,11 +133,26 @@ jobs:
           set -euo pipefail
 
           cd "$SOURCE_DIR"
+
+          echo "Go version:"
+          go version
+
+          echo "Go private module settings:"
           go env -w GOPRIVATE=gitee.com/quxintiaodong/quxin-common
           go env -w GONOSUMDB=gitee.com/quxintiaodong/quxin-common
+          go env GOPRIVATE GONOSUMDB GOTOOLCHAIN
+
+          echo "Clearing Go VCS cache..."
           rm -rf "$(go env GOPATH)/pkg/mod/cache/vcs"
+
+          echo "Downloading Go modules..."
           go mod download
-          go build -ldflags="-s -w" -tags no_k8s -o "$BINARY_NAME" ./http
+
+          echo "Building $BINARY_NAME..."
+          go build -v -ldflags="-s -w" -tags no_k8s -o "$BINARY_NAME" ./http
+
+          echo "Build completed:"
+          ls -lh "$BINARY_NAME"
 
       - name: Build and push Docker image
         if: ${{ inputs.deploy == true }}

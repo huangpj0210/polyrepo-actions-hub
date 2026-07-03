@@ -15,6 +15,12 @@ Workflow:
 
 `.github/workflows/miniapi.yml`
 
+## im-callback-http
+
+Workflow:
+
+`.github/workflows/im-callback-http.yml`
+
 ## Run manually
 
 Open **Actions** -> **miniapi CI/CD** -> **Run workflow**.

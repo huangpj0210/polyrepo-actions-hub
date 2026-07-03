@@ -11,7 +11,7 @@ on:
         description: "Build and push Docker image"
         type: boolean
         required: true
-        default: false
+        default: true
       image_tag:
         description: "Optional Docker image tag"
         required: false
@@ -106,21 +106,14 @@ jobs:
           go test ./...
           go build -ldflags="-s -w" -tags no_k8s -o "$BINARY_NAME" .
 
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: quxin-miniapi
-          path: ${{ env.SOURCE_DIR }}/${{ env.BINARY_NAME }}
-          if-no-files-found: error
-
       - name: Build and push Docker image
         if: ${{ inputs.deploy == true }}
         shell: bash
         env:
-          REGISTRY_HOST: ${{ secrets.QX_REGISTRY_HOST }}
+          REGISTRY_HOST: ${{ vars.QX_REGISTRY_HOST || secrets.QX_REGISTRY_HOST }}
           REGISTRY_USERNAME: ${{ secrets.QX_REGISTRY_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.QX_REGISTRY_PASSWORD }}
-          IMAGE_NAME: ${{ secrets.QX_MINIAPI_IMAGE_NAME }}
+          IMAGE_NAME: ${{ vars.QX_MINIAPI_IMAGE_NAME || secrets.QX_MINIAPI_IMAGE_NAME }}
           INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
@@ -130,13 +123,26 @@ jobs:
             exit 1
           fi
 
+          cd "$SOURCE_DIR"
+          source_sha="$(git rev-parse --short=12 HEAD)"
+
           image_tag="$INPUT_IMAGE_TAG"
           if [ -z "$image_tag" ]; then
-            image_tag="${GITHUB_SHA::12}"
+            image_tag="$source_sha"
           fi
 
-          cd "$SOURCE_DIR"
           image="$REGISTRY_HOST/$IMAGE_NAME:$image_tag"
+          echo "Docker image: $image"
+          echo "Source commit: $source_sha"
+
           docker build -t "$image" .
           printf '%s\n' "$REGISTRY_PASSWORD" | docker login "$REGISTRY_HOST" -u "$REGISTRY_USERNAME" --password-stdin
           docker push "$image"
+
+          {
+            echo "### Docker image"
+            echo ""
+            echo "- Image: \`$image\`"
+            echo "- Tag: \`$image_tag\`"
+            echo "- Source commit: \`$source_sha\`"
+          } >> "$GITHUB_STEP_SUMMARY"

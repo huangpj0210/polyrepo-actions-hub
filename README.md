@@ -23,12 +23,15 @@ Required secrets:
 
 Do not include the token in `QUXIN_MINIAPI_GIT_URL`. Keep it as a plain HTTPS repository URL; the workflow injects the token at runtime using Gitee's `https://<user>:<token>@gitee.com/<owner>/<repo>.git` format.
 
-Optional deploy secrets:
+Deploy variables:
 
 - `QX_REGISTRY_HOST`: container registry host.
+- `QX_MINIAPI_IMAGE_NAME`: private image repository name.
+
+Deploy secrets:
+
 - `QX_REGISTRY_USERNAME`: container registry username.
 - `QX_REGISTRY_PASSWORD`: container registry password.
-- `QX_MINIAPI_IMAGE_NAME`: private image repository name.
 
 Project-specific sensitive values should be injected with additional GitHub Actions secrets. Avoid baking runtime passwords or production config into Docker images; prefer passing those values through your deployment platform.
 
@@ -39,8 +42,8 @@ Open **Actions** -> **quxin-miniapi CI/CD** -> **Run workflow**.
 Inputs:
 
 - `ref`: optional branch, tag, or commit override.
-- `deploy`: set to `true` to build and push a Docker image.
-- `image_tag`: optional Docker image tag. If empty, the workflow uses the GitHub Actions commit SHA prefix.
+- `deploy`: set to `true` to build and push a Docker image. It defaults to `true`.
+- `image_tag`: optional Docker image tag. If empty, the workflow uses the source repository commit SHA prefix.
 
 ## Notes
 

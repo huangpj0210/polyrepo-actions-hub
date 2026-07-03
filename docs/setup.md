@@ -20,12 +20,15 @@ Add required source checkout secrets in:
 
 Do not include the token in `QUXIN_MINIAPI_GIT_URL`. Keep it as a plain HTTPS repository URL; the workflow injects the token at runtime using Gitee's `https://<user>:<token>@gitee.com/<owner>/<repo>.git` format.
 
-For Docker image publishing, add:
+For Docker image publishing, add repository variables:
 
 - `QX_REGISTRY_HOST`
+- `QX_MINIAPI_IMAGE_NAME`
+
+Then add repository secrets:
+
 - `QX_REGISTRY_USERNAME`
 - `QX_REGISTRY_PASSWORD`
-- `QX_MINIAPI_IMAGE_NAME`
 
 ## 3. Add project workflows
 

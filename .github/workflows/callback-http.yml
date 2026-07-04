@@ -129,6 +129,9 @@ jobs:
         shell: bash
         env:
           GOTOOLCHAIN: local
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
         run: |
           set -euo pipefail
 
@@ -140,7 +143,7 @@ jobs:
           echo "Go private module settings:"
           go env -w GOPRIVATE=gitee.com/quxintiaodong/quxin-common
           go env -w GONOSUMDB=gitee.com/quxintiaodong/quxin-common
-          go env GOPRIVATE GONOSUMDB GOTOOLCHAIN
+          go env GOPRIVATE GONOSUMDB GOTOOLCHAIN CGO_ENABLED GOOS GOARCH
 
           echo "Clearing Go VCS cache..."
           rm -rf "$(go env GOPATH)/pkg/mod/cache/vcs"
@@ -149,10 +152,12 @@ jobs:
           go mod download
 
           echo "Building $BINARY_NAME..."
-          go build -v -ldflags="-s -w" -tags no_k8s -o "$BINARY_NAME" ./http
+          go build -v -ldflags="-s -w" -tags no_k8s -o "./$BINARY_NAME" ./http
 
           echo "Build completed:"
+          test -x "$BINARY_NAME"
           ls -lh "$BINARY_NAME"
+          file "$BINARY_NAME"
 
       - name: Build and push Docker image
         if: ${{ inputs.deploy == true }}

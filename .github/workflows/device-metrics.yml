@@ -1,0 +1,235 @@
+name: device-metrics
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        type: choice
+        required: true
+        default: "codex/rust-migration"
+        options:
+          - codex/rust-migration
+          - main
+          - refactor/second-pass
+      deploy:
+        description: "Upload package to server"
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and Upload
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_DIR: source
+      PACKAGE_NAME: device-metrics-server
+    steps:
+      - name: Configure source repository auth
+        shell: bash
+        env:
+          SOURCE_GIT_URL: ${{ secrets.DEVICE_METRICS_GIT_URL }}
+          SOURCE_SSH_KEY: ${{ secrets.DEVICE_METRICS_REPO_SSH_KEY }}
+          SOURCE_TOKEN: ${{ secrets.DEVICE_METRICS_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$SOURCE_GIT_URL" ]; then
+            echo "Missing secret: DEVICE_METRICS_GIT_URL" >&2
+            exit 1
+          fi
+
+          auth_dir="$RUNNER_TEMP/device-metrics-source-auth"
+          mkdir -p "$auth_dir"
+          chmod 700 "$auth_dir"
+
+          case "$SOURCE_GIT_URL" in
+            git@*|ssh://*)
+              if [ -z "$SOURCE_SSH_KEY" ]; then
+                echo "Missing secret: DEVICE_METRICS_REPO_SSH_KEY" >&2
+                exit 1
+              fi
+              printf '%s\n' "$SOURCE_SSH_KEY" > "$auth_dir/source_key"
+              chmod 600 "$auth_dir/source_key"
+              ssh-keyscan github.com > "$auth_dir/known_hosts"
+              echo "GIT_SSH_COMMAND=ssh -i $auth_dir/source_key -o UserKnownHostsFile=$auth_dir/known_hosts -o StrictHostKeyChecking=yes" >> "$GITHUB_ENV"
+              ;;
+            https://github.com/*)
+              if [ -n "$SOURCE_TOKEN" ]; then
+                echo "::add-mask::$SOURCE_TOKEN"
+              fi
+              ;;
+            *)
+              echo "DEVICE_METRICS_GIT_URL must be a GitHub SSH or HTTPS URL." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Clone source repository
+        shell: bash
+        env:
+          SOURCE_GIT_URL: ${{ secrets.DEVICE_METRICS_GIT_URL }}
+          SOURCE_TOKEN: ${{ secrets.DEVICE_METRICS_REPO_TOKEN }}
+          CHECKOUT_BRANCH: ${{ inputs.branch }}
+        run: |
+          set -euo pipefail
+
+          clone_url="$SOURCE_GIT_URL"
+          if [[ "$SOURCE_GIT_URL" == https://github.com/* && -n "$SOURCE_TOKEN" ]]; then
+            repo_path="${SOURCE_GIT_URL#https://github.com/}"
+            clone_url="https://x-access-token:${SOURCE_TOKEN}@github.com/${repo_path}"
+            echo "::add-mask::$clone_url"
+          fi
+
+          echo "Cloning branch: $CHECKOUT_BRANCH"
+          git clone --depth 1 --branch "$CHECKOUT_BRANCH" "$clone_url" "$SOURCE_DIR"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Setup pnpm
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm --version
+
+      - name: Setup Rust
+        if: ${{ inputs.branch == 'codex/rust-migration' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup default stable
+          rustup show
+          cargo --version
+
+      - name: Setup Go
+        if: ${{ inputs.branch != 'codex/rust-migration' }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+          cache-dependency-path: ${{ env.SOURCE_DIR }}/go.sum
+
+      - name: Build package
+        shell: bash
+        env:
+          CHECKOUT_BRANCH: ${{ inputs.branch }}
+          RUST_DEPLOY_DIR: ${{ secrets.DEVICE_METRICS_RUST_DEPLOY_DIR }}
+          GO_DEPLOY_DIR: ${{ secrets.DEVICE_METRICS_GO_DEPLOY_DIR }}
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          set -euo pipefail
+
+          cd "$SOURCE_DIR"
+          mkdir -p dist
+
+          if [ "$CHECKOUT_BRANCH" = "codex/rust-migration" ]; then
+            if [ -z "$RUST_DEPLOY_DIR" ]; then
+              echo "Missing secret: DEVICE_METRICS_RUST_DEPLOY_DIR" >&2
+              exit 1
+            fi
+
+            echo "Building Rust server package..."
+            chmod +x scripts/build-server.sh
+            ./scripts/build-server.sh
+
+            archive="$(find dist -maxdepth 1 -type f -name 'device-metrics-server-*.tar.gz' | sort | tail -n 1)"
+            deploy_dir="$RUST_DEPLOY_DIR"
+          else
+            if [ -z "$GO_DEPLOY_DIR" ]; then
+              echo "Missing secret: DEVICE_METRICS_GO_DEPLOY_DIR" >&2
+              exit 1
+            fi
+
+            echo "Building Go server package..."
+            go version
+            go env GOOS GOARCH CGO_ENABLED
+            make build-linux
+
+            package_dir="dist/$PACKAGE_NAME"
+            archive="dist/$PACKAGE_NAME-linux-amd64.tar.gz"
+            rm -rf "$package_dir" "$archive"
+            mkdir -p "$package_dir"
+            cp device-metrics "$package_dir/device-metrics"
+            cp -R etc "$package_dir/etc"
+            cp README.md "$package_dir/README.md"
+            cat > "$package_dir/run.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          CONFIG="${1:-$DIR/etc/config.yaml}"
+
+          exec "$DIR/device-metrics" -config "$CONFIG"
+          SH
+            chmod +x "$package_dir/run.sh"
+            tar --format=ustar -czf "$archive" -C dist "$PACKAGE_NAME"
+            deploy_dir="$GO_DEPLOY_DIR"
+          fi
+
+          if [ ! -s "$archive" ]; then
+            echo "Package archive was not created: $archive" >&2
+            exit 1
+          fi
+
+          echo "Package ready:"
+          ls -lh "$archive"
+
+          {
+            echo "PACKAGE_ARCHIVE=$SOURCE_DIR/$archive"
+            echo "DEPLOY_DIR=$deploy_dir"
+          } >> "$GITHUB_ENV"
+
+      - name: Upload package to server
+        if: ${{ inputs.deploy == true }}
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEVICE_METRICS_DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEVICE_METRICS_DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEVICE_METRICS_DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEVICE_METRICS_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "Missing one of: DEVICE_METRICS_DEPLOY_HOST, DEVICE_METRICS_DEPLOY_USER, DEVICE_METRICS_DEPLOY_SSH_KEY" >&2
+            exit 1
+          fi
+          if [ -z "$DEPLOY_DIR" ]; then
+            echo "Deploy directory is empty" >&2
+            exit 1
+          fi
+
+          port="${DEPLOY_PORT:-22}"
+          ssh_dir="$RUNNER_TEMP/device-metrics-deploy-ssh"
+          mkdir -p "$ssh_dir"
+          chmod 700 "$ssh_dir"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/deploy_key"
+          chmod 600 "$ssh_dir/deploy_key"
+          ssh-keyscan -p "$port" "$DEPLOY_HOST" > "$ssh_dir/known_hosts"
+
+          archive_name="$(basename "$PACKAGE_ARCHIVE")"
+          remote_dir="$(printf '%q' "$DEPLOY_DIR")"
+          remote_file="$(printf '%q' "$DEPLOY_DIR/$archive_name")"
+          ssh_base=(ssh -i "$ssh_dir/deploy_key" -o UserKnownHostsFile="$ssh_dir/known_hosts" -o StrictHostKeyChecking=yes -p "$port")
+
+          echo "Uploading package: $archive_name"
+          "${ssh_base[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $remote_dir"
+          "${ssh_base[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "cat > $remote_file" < "$PACKAGE_ARCHIVE"
+
+          {
+            echo "### device-metrics package"
+            echo ""
+            echo "- Branch: \`${{ inputs.branch }}\`"
+            echo "- Package: \`$archive_name\`"
+            echo "- Deploy directory: \`$DEPLOY_DIR\`"
+          } >> "$GITHUB_STEP_SUMMARY"

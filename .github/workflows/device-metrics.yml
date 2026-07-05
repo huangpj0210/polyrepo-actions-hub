@@ -145,6 +145,17 @@ jobs:
 
             echo "Building Rust server package..."
             chmod +x scripts/build-server.sh
+            if [ -f web/pnpm-workspace.yaml ] && ! grep -Eq '^[[:space:]]*packages:' web/pnpm-workspace.yaml; then
+              echo "Adding missing packages field to web/pnpm-workspace.yaml for pnpm..."
+              tmp_workspace="$(mktemp)"
+              {
+                echo 'packages:'
+                echo '  - "."'
+                echo ''
+                cat web/pnpm-workspace.yaml
+              } > "$tmp_workspace"
+              mv "$tmp_workspace" web/pnpm-workspace.yaml
+            fi
             ./scripts/build-server.sh
 
             archive="$(find dist -maxdepth 1 -type f -name 'device-metrics-server-*.tar.gz' | sort | tail -n 1)"

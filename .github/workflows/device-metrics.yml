@@ -167,6 +167,39 @@ jobs:
             ./scripts/build-server.sh
 
             archive="$(find dist -maxdepth 1 -type f -name 'device-metrics-server-*.tar.gz' | sort | tail -n 1)"
+            package_dir="dist/$PACKAGE_NAME"
+            lib_dir="$package_dir/lib"
+            if [ ! -d "$package_dir" ]; then
+              echo "Package directory was not created: $package_dir" >&2
+              exit 1
+            fi
+
+            echo "Bundling libsasl2 runtime libraries..."
+            mkdir -p "$lib_dir"
+            sasl_libs=(/usr/lib/x86_64-linux-gnu/libsasl2.so.2*)
+            if [ "${#sasl_libs[@]}" -eq 0 ]; then
+              echo "libsasl2 runtime library was not found on the runner" >&2
+              exit 1
+            fi
+            cp -a "${sasl_libs[@]}" "$lib_dir/"
+            if [ -d /usr/lib/x86_64-linux-gnu/sasl2 ]; then
+              cp -a /usr/lib/x86_64-linux-gnu/sasl2 "$lib_dir/"
+            fi
+            cat > "$package_dir/run.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          CONFIG="${1:-$DIR/etc/config.yaml}"
+
+          export LD_LIBRARY_PATH="$DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export SASL_PATH="$DIR/lib/sasl2${SASL_PATH:+:$SASL_PATH}"
+
+          exec "$DIR/device-metrics" "$CONFIG"
+          SH
+            chmod +x "$package_dir/run.sh"
+            ldd "$package_dir/device-metrics" || true
+            (cd dist && tar --format=ustar -czf "$(basename "$archive")" "$PACKAGE_NAME")
             deploy_dir="$RUST_DEPLOY_DIR"
           else
             if [ -z "$GO_DEPLOY_DIR" ]; then

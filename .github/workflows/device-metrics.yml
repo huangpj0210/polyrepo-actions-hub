@@ -221,11 +221,16 @@ jobs:
           DEPLOY_PORT: ${{ secrets.DEVICE_METRICS_DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEVICE_METRICS_DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEVICE_METRICS_DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KEY_B64: ${{ secrets.DEVICE_METRICS_DEPLOY_SSH_KEY_B64 }}
         run: |
           set -euo pipefail
 
-          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
-            echo "Missing one of: DEVICE_METRICS_DEPLOY_HOST, DEVICE_METRICS_DEPLOY_USER, DEVICE_METRICS_DEPLOY_SSH_KEY" >&2
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ]; then
+            echo "Missing one of: DEVICE_METRICS_DEPLOY_HOST, DEVICE_METRICS_DEPLOY_USER" >&2
+            exit 1
+          fi
+          if [ -z "$DEPLOY_SSH_KEY" ] && [ -z "$DEPLOY_SSH_KEY_B64" ]; then
+            echo "Missing secret: DEVICE_METRICS_DEPLOY_SSH_KEY or DEVICE_METRICS_DEPLOY_SSH_KEY_B64" >&2
             exit 1
           fi
           if [ -z "$DEPLOY_DIR" ]; then
@@ -237,8 +242,16 @@ jobs:
           ssh_dir="$RUNNER_TEMP/device-metrics-deploy-ssh"
           mkdir -p "$ssh_dir"
           chmod 700 "$ssh_dir"
-          printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/deploy_key"
+          if [ -n "$DEPLOY_SSH_KEY_B64" ]; then
+            printf '%s' "$DEPLOY_SSH_KEY_B64" | base64 -d > "$ssh_dir/deploy_key"
+          else
+            printf '%s\n' "$DEPLOY_SSH_KEY" | sed 's/\r$//' > "$ssh_dir/deploy_key"
+          fi
           chmod 600 "$ssh_dir/deploy_key"
+          if ! ssh-keygen -y -P "" -f "$ssh_dir/deploy_key" >/dev/null; then
+            echo "Invalid deploy SSH private key. Use an unencrypted private key, not the .pub public key. If multiline secrets are unreliable, set DEVICE_METRICS_DEPLOY_SSH_KEY_B64." >&2
+            exit 1
+          fi
           ssh-keyscan -p "$port" "$DEPLOY_HOST" > "$ssh_dir/known_hosts"
 
           archive_name="$(basename "$PACKAGE_ARCHIVE")"

@@ -34,7 +34,7 @@ jobs:
         env:
           SOURCE_GIT_URL: ${{ secrets.DEVICE_METRICS_GIT_URL }}
           SOURCE_SSH_KEY: ${{ secrets.DEVICE_METRICS_REPO_SSH_KEY }}
-          SOURCE_TOKEN: ${{ secrets.DEVICE_METRICS_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.DEVICE_METRICS_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -59,9 +59,11 @@ jobs:
               echo "GIT_SSH_COMMAND=ssh -i $auth_dir/source_key -o UserKnownHostsFile=$auth_dir/known_hosts -o StrictHostKeyChecking=yes" >> "$GITHUB_ENV"
               ;;
             https://github.com/*)
-              if [ -n "$SOURCE_TOKEN" ]; then
-                echo "::add-mask::$SOURCE_TOKEN"
+              if [ -z "$GITHUB_TOKEN" ]; then
+                echo "Missing secret: DEVICE_METRICS_GITHUB_TOKEN" >&2
+                exit 1
               fi
+              echo "::add-mask::$GITHUB_TOKEN"
               ;;
             *)
               echo "DEVICE_METRICS_GIT_URL must be a GitHub SSH or HTTPS URL." >&2
@@ -73,15 +75,15 @@ jobs:
         shell: bash
         env:
           SOURCE_GIT_URL: ${{ secrets.DEVICE_METRICS_GIT_URL }}
-          SOURCE_TOKEN: ${{ secrets.DEVICE_METRICS_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.DEVICE_METRICS_GITHUB_TOKEN }}
           CHECKOUT_BRANCH: ${{ inputs.branch }}
         run: |
           set -euo pipefail
 
           clone_url="$SOURCE_GIT_URL"
-          if [[ "$SOURCE_GIT_URL" == https://github.com/* && -n "$SOURCE_TOKEN" ]]; then
+          if [[ "$SOURCE_GIT_URL" == https://github.com/* ]]; then
             repo_path="${SOURCE_GIT_URL#https://github.com/}"
-            clone_url="https://x-access-token:${SOURCE_TOKEN}@github.com/${repo_path}"
+            clone_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${repo_path}"
             echo "::add-mask::$clone_url"
           fi
 

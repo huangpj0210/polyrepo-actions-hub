@@ -115,6 +115,14 @@ jobs:
           rustup show
           cargo --version
 
+      - name: Install Rust native dependencies
+        if: ${{ inputs.branch == 'codex/rust-migration' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libsasl2-dev
+
       - name: Setup Go
         if: ${{ inputs.branch != 'codex/rust-migration' }}
         uses: actions/setup-go@v5

@@ -13,21 +13,24 @@ on:
           - main
           - refactor/second-pass
       deploy:
-        description: "Upload package to server"
+        description: "Build and push Docker image"
         type: boolean
         required: true
         default: true
+      image_tag:
+        description: "Optional Docker image tag"
+        required: false
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Build and Upload
+    name: Build and Push
     runs-on: ubuntu-latest
     env:
       SOURCE_DIR: source
-      PACKAGE_NAME: device-metrics-server
     steps:
       - name: Configure source repository auth
         shell: bash
@@ -93,213 +96,60 @@ jobs:
           echo "Cloning branch: $CHECKOUT_BRANCH"
           git clone --depth 1 --branch "$CHECKOUT_BRANCH" "$clone_url" "$SOURCE_DIR"
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Setup pnpm
-        shell: bash
-        run: |
-          set -euo pipefail
-          corepack enable
-          corepack prepare pnpm@9 --activate
-          pnpm --version
-
-      - name: Setup Rust
-        if: ${{ inputs.branch == 'codex/rust-migration' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          rustup default stable
-          rustup show
-          cargo --version
-
-      - name: Install Rust native dependencies
-        if: ${{ inputs.branch == 'codex/rust-migration' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential pkg-config libsasl2-dev
-
-      - name: Setup Go
-        if: ${{ inputs.branch != 'codex/rust-migration' }}
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.0"
-          cache-dependency-path: ${{ env.SOURCE_DIR }}/go.sum
-
-      - name: Build package
-        shell: bash
-        env:
-          CHECKOUT_BRANCH: ${{ inputs.branch }}
-          RUST_DEPLOY_DIR: ${{ secrets.DEVICE_METRICS_RUST_DEPLOY_DIR }}
-          GO_DEPLOY_DIR: ${{ secrets.DEVICE_METRICS_GO_DEPLOY_DIR }}
-          CGO_ENABLED: "0"
-          GOOS: linux
-          GOARCH: amd64
-        run: |
-          set -euo pipefail
-
-          cd "$SOURCE_DIR"
-          mkdir -p dist
-
-          if [ "$CHECKOUT_BRANCH" = "codex/rust-migration" ]; then
-            if [ -z "$RUST_DEPLOY_DIR" ]; then
-              echo "Missing secret: DEVICE_METRICS_RUST_DEPLOY_DIR" >&2
-              exit 1
-            fi
-
-            echo "Building Rust server package..."
-            chmod +x scripts/build-server.sh
-            if [ -f web/pnpm-workspace.yaml ] && ! grep -Eq '^[[:space:]]*packages:' web/pnpm-workspace.yaml; then
-              echo "Adding missing packages field to web/pnpm-workspace.yaml for pnpm..."
-              tmp_workspace="$(mktemp)"
-              {
-                echo 'packages:'
-                echo '  - "."'
-                echo ''
-                cat web/pnpm-workspace.yaml
-              } > "$tmp_workspace"
-              mv "$tmp_workspace" web/pnpm-workspace.yaml
-            fi
-            ./scripts/build-server.sh
-
-            archive="$(find dist -maxdepth 1 -type f -name 'device-metrics-server-*.tar.gz' | sort | tail -n 1)"
-            package_dir="dist/$PACKAGE_NAME"
-            lib_dir="$package_dir/lib"
-            if [ ! -d "$package_dir" ]; then
-              echo "Package directory was not created: $package_dir" >&2
-              exit 1
-            fi
-
-            echo "Bundling libsasl2 runtime libraries..."
-            mkdir -p "$lib_dir"
-            sasl_libs=(/usr/lib/x86_64-linux-gnu/libsasl2.so.2*)
-            if [ "${#sasl_libs[@]}" -eq 0 ]; then
-              echo "libsasl2 runtime library was not found on the runner" >&2
-              exit 1
-            fi
-            cp -a "${sasl_libs[@]}" "$lib_dir/"
-            if [ -d /usr/lib/x86_64-linux-gnu/sasl2 ]; then
-              cp -a /usr/lib/x86_64-linux-gnu/sasl2 "$lib_dir/"
-            fi
-            cat > "$package_dir/run.sh" <<'SH'
-          #!/usr/bin/env bash
-          set -euo pipefail
-
-          DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          CONFIG="${1:-$DIR/etc/config.yaml}"
-
-          export LD_LIBRARY_PATH="$DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          export SASL_PATH="$DIR/lib/sasl2${SASL_PATH:+:$SASL_PATH}"
-
-          exec "$DIR/device-metrics" "$CONFIG"
-          SH
-            chmod +x "$package_dir/run.sh"
-            ldd "$package_dir/device-metrics" || true
-            (cd dist && tar --format=ustar -czf "$(basename "$archive")" "$PACKAGE_NAME")
-            deploy_dir="$RUST_DEPLOY_DIR"
-          else
-            if [ -z "$GO_DEPLOY_DIR" ]; then
-              echo "Missing secret: DEVICE_METRICS_GO_DEPLOY_DIR" >&2
-              exit 1
-            fi
-
-            echo "Building Go server package..."
-            go version
-            go env GOOS GOARCH CGO_ENABLED
-            make build-linux
-
-            package_dir="dist/$PACKAGE_NAME"
-            archive="dist/$PACKAGE_NAME-linux-amd64.tar.gz"
-            rm -rf "$package_dir" "$archive"
-            mkdir -p "$package_dir"
-            cp device-metrics "$package_dir/device-metrics"
-            cp -R etc "$package_dir/etc"
-            cp README.md "$package_dir/README.md"
-            cat > "$package_dir/run.sh" <<'SH'
-          #!/usr/bin/env bash
-          set -euo pipefail
-
-          DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          CONFIG="${1:-$DIR/etc/config.yaml}"
-
-          exec "$DIR/device-metrics" -config "$CONFIG"
-          SH
-            chmod +x "$package_dir/run.sh"
-            tar --format=ustar -czf "$archive" -C dist "$PACKAGE_NAME"
-            deploy_dir="$GO_DEPLOY_DIR"
-          fi
-
-          if [ ! -s "$archive" ]; then
-            echo "Package archive was not created: $archive" >&2
-            exit 1
-          fi
-
-          echo "Package ready:"
-          ls -lh "$archive"
-
-          {
-            echo "PACKAGE_ARCHIVE=$SOURCE_DIR/$archive"
-            echo "DEPLOY_DIR=$deploy_dir"
-          } >> "$GITHUB_ENV"
-
-      - name: Upload package to server
+      - name: Build and push Docker image
         if: ${{ inputs.deploy == true }}
         shell: bash
         env:
-          DEPLOY_HOST: ${{ secrets.DEVICE_METRICS_DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ secrets.DEVICE_METRICS_DEPLOY_PORT }}
-          DEPLOY_USER: ${{ secrets.DEVICE_METRICS_DEPLOY_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEVICE_METRICS_DEPLOY_SSH_KEY }}
-          DEPLOY_SSH_KEY_B64: ${{ secrets.DEVICE_METRICS_DEPLOY_SSH_KEY_B64 }}
+          REGISTRY_HOST: ${{ vars.DEVICE_METRICS_REGISTRY_HOST || secrets.DEVICE_METRICS_REGISTRY_HOST || vars.ALIYUN_REGISTRY_HOST || secrets.ALIYUN_REGISTRY_HOST || vars.QX_REGISTRY_HOST || secrets.QX_REGISTRY_HOST }}
+          REGISTRY_USERNAME: ${{ secrets.DEVICE_METRICS_REGISTRY_USERNAME || secrets.ALIYUN_REGISTRY_USERNAME || secrets.QX_REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.DEVICE_METRICS_REGISTRY_PASSWORD || secrets.ALIYUN_REGISTRY_PASSWORD || secrets.QX_REGISTRY_PASSWORD }}
+          IMAGE_NAME: ${{ vars.DEVICE_METRICS_IMAGE_NAME || secrets.DEVICE_METRICS_IMAGE_NAME }}
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
 
-          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ]; then
-            echo "Missing one of: DEVICE_METRICS_DEPLOY_HOST, DEVICE_METRICS_DEPLOY_USER" >&2
-            exit 1
-          fi
-          if [ -z "$DEPLOY_SSH_KEY" ] && [ -z "$DEPLOY_SSH_KEY_B64" ]; then
-            echo "Missing secret: DEVICE_METRICS_DEPLOY_SSH_KEY or DEVICE_METRICS_DEPLOY_SSH_KEY_B64" >&2
-            exit 1
-          fi
-          if [ -z "$DEPLOY_DIR" ]; then
-            echo "Deploy directory is empty" >&2
+          if [ -z "$REGISTRY_HOST" ] || [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_PASSWORD" ] || [ -z "$IMAGE_NAME" ]; then
+            echo "Missing registry configuration for device-metrics" >&2
             exit 1
           fi
 
-          port="${DEPLOY_PORT:-22}"
-          ssh_dir="$RUNNER_TEMP/device-metrics-deploy-ssh"
-          mkdir -p "$ssh_dir"
-          chmod 700 "$ssh_dir"
-          if [ -n "$DEPLOY_SSH_KEY_B64" ]; then
-            printf '%s' "$DEPLOY_SSH_KEY_B64" | base64 -d > "$ssh_dir/deploy_key"
-          else
-            printf '%s\n' "$DEPLOY_SSH_KEY" | sed 's/\r$//' > "$ssh_dir/deploy_key"
-          fi
-          chmod 600 "$ssh_dir/deploy_key"
-          if ! ssh-keygen -y -P "" -f "$ssh_dir/deploy_key" >/dev/null; then
-            echo "Invalid deploy SSH private key. Use an unencrypted private key, not the .pub public key. If multiline secrets are unreliable, set DEVICE_METRICS_DEPLOY_SSH_KEY_B64." >&2
+          cd "$SOURCE_DIR"
+          if [ ! -f Dockerfile ]; then
+            echo "Dockerfile was not found in selected branch: ${{ inputs.branch }}" >&2
             exit 1
           fi
-          ssh-keyscan -p "$port" "$DEPLOY_HOST" > "$ssh_dir/known_hosts"
 
-          archive_name="$(basename "$PACKAGE_ARCHIVE")"
-          remote_dir="$(printf '%q' "$DEPLOY_DIR")"
-          remote_file="$(printf '%q' "$DEPLOY_DIR/$archive_name")"
-          ssh_base=(ssh -i "$ssh_dir/deploy_key" -o UserKnownHostsFile="$ssh_dir/known_hosts" -o StrictHostKeyChecking=yes -p "$port")
+          if [ -f web/pnpm-workspace.yaml ] && ! grep -Eq '^[[:space:]]*packages:' web/pnpm-workspace.yaml; then
+            echo "Adding missing packages field to web/pnpm-workspace.yaml for pnpm..."
+            tmp_workspace="$(mktemp)"
+            {
+              echo 'packages:'
+              echo '  - "."'
+              echo ''
+              cat web/pnpm-workspace.yaml
+            } > "$tmp_workspace"
+            mv "$tmp_workspace" web/pnpm-workspace.yaml
+          fi
 
-          echo "Uploading package: $archive_name"
-          "${ssh_base[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $remote_dir"
-          "${ssh_base[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "cat > $remote_file" < "$PACKAGE_ARCHIVE"
+          source_sha="$(git rev-parse --short=12 HEAD)"
+          image_tag="$INPUT_IMAGE_TAG"
+          if [ -z "$image_tag" ]; then
+            image_tag="$source_sha"
+          fi
+
+          image="$REGISTRY_HOST/$IMAGE_NAME:$image_tag"
+          echo "Docker image: $image"
+          echo "Source commit: $source_sha"
+
+          docker build --platform linux/amd64 -t "$image" .
+          printf '%s\n' "$REGISTRY_PASSWORD" | docker login "$REGISTRY_HOST" -u "$REGISTRY_USERNAME" --password-stdin
+          docker push "$image"
 
           {
-            echo "### device-metrics package"
+            echo "### device-metrics Docker image"
             echo ""
             echo "- Branch: \`${{ inputs.branch }}\`"
-            echo "- Package: \`$archive_name\`"
-            echo "- Deploy directory: \`$DEPLOY_DIR\`"
+            echo "- Image: \`$image\`"
+            echo "- Tag: \`$image_tag\`"
+            echo "- Source commit: \`$source_sha\`"
           } >> "$GITHUB_STEP_SUMMARY"

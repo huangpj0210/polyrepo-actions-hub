@@ -103,7 +103,7 @@ jobs:
         if: ${{ inputs.deploy == true }}
         shell: bash
         env:
-          REGISTRY_HOST: ${{ vars.DOCKER_REGISTRY_HOST || secrets.DOCKER_REGISTRY_HOST }}
+          REGISTRY_HOST: ${{ secrets.DOCKER_REGISTRY_HOST }}
           REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
           INPUT_IMAGE_TAG: ${{ inputs.image_tag }}

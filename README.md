@@ -39,7 +39,7 @@ ccr.ccs.tencentyun.com/chicony/device-metrics:<tag>
 
 | Name | Kind | Value |
 | --- | --- | --- |
-| `DOCKER_REGISTRY_HOST` | Variable | `ccr.ccs.tencentyun.com` |
+| `DOCKER_REGISTRY_HOST` | Secret | `ccr.ccs.tencentyun.com` |
 | `DOCKER_REGISTRY_USERNAME` | Secret | TCR login user (Tencent Cloud account ID) |
 | `DOCKER_REGISTRY_PASSWORD` | Secret | TCR login password |
 | `DEVICE_METRICS_GIT_URL` | Secret | Private source repository URL |

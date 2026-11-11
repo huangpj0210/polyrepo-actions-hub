@@ -8,20 +8,17 @@ Recommended repository:
 - Name: `polyrepo-actions-hub`
 - Visibility: Public
 
-## 2. Add variables and secrets
+## 2. Add secrets
 
-Add project-specific variables and secrets in:
+Add repository secrets in:
 
 `Settings` -> `Secrets and variables` -> `Actions`
-
-Variables:
-
-- `DOCKER_REGISTRY_HOST` = `ccr.ccs.tencentyun.com`
 
 The image namespace and repository name are fixed in `.github/workflows/device-metrics.yml` (`REGISTRY_NAMESPACE: chicony`, `IMAGE_NAME: device-metrics`), not in repository settings.
 
 Secrets:
 
+- `DOCKER_REGISTRY_HOST` = `ccr.ccs.tencentyun.com`
 - `DOCKER_REGISTRY_USERNAME` = `100005971004`
 - `DOCKER_REGISTRY_PASSWORD` (TCR login password, filled in manually)
 - `DEVICE_METRICS_GIT_URL`

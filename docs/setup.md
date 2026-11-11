@@ -17,12 +17,13 @@ Add project-specific variables and secrets in:
 Variables:
 
 - `DOCKER_REGISTRY_HOST` = `ccr.ccs.tencentyun.com`
-- `DEVICE_METRICS_RUST_IMAGE_NAME` = `<namespace>/device-metrics`
+
+The image namespace and repository name are fixed in `.github/workflows/device-metrics.yml` (`REGISTRY_NAMESPACE: chicony`, `IMAGE_NAME: device-metrics`), not in repository settings.
 
 Secrets:
 
-- `DOCKER_REGISTRY_USERNAME`
-- `DOCKER_REGISTRY_PASSWORD`
+- `DOCKER_REGISTRY_USERNAME` = `100005971004`
+- `DOCKER_REGISTRY_PASSWORD` (TCR login password, filled in manually)
 - `DEVICE_METRICS_GIT_URL`
 - `DEVICE_METRICS_REPO_SSH_KEY` (SSH source URL) or `GH_USERNAME` + `GH_TOKEN` (HTTPS source URL)
 

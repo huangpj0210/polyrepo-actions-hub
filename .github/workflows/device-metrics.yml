@@ -7,11 +7,12 @@ on:
         description: "Branch to build"
         type: choice
         required: true
-        default: "codex/rust-migration"
+        default: "feat/v2-line-switchover"
         options:
+          - feat/v2-line-switchover
           - codex/rust-migration
-          - main
           - refactor/second-pass
+          - main
       deploy:
         description: "Build and push Docker image"
         type: boolean
@@ -31,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SOURCE_DIR: source
+      REGISTRY_NAMESPACE: chicony
+      IMAGE_NAME: device-metrics
     steps:
       - name: Configure source repository auth
         shell: bash
@@ -103,13 +106,12 @@ jobs:
           REGISTRY_HOST: ${{ vars.DOCKER_REGISTRY_HOST || secrets.DOCKER_REGISTRY_HOST }}
           REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
-          IMAGE_NAME: ${{ vars.DEVICE_METRICS_RUST_IMAGE_NAME || secrets.DEVICE_METRICS_RUST_IMAGE_NAME }}
           INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
 
-          if [ -z "$REGISTRY_HOST" ] || [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_PASSWORD" ] || [ -z "$IMAGE_NAME" ]; then
-            echo "Missing one of: DOCKER_REGISTRY_HOST, DOCKER_REGISTRY_USERNAME, DOCKER_REGISTRY_PASSWORD, DEVICE_METRICS_RUST_IMAGE_NAME" >&2
+          if [ -z "$REGISTRY_HOST" ] || [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_PASSWORD" ]; then
+            echo "Missing one of: DOCKER_REGISTRY_HOST, DOCKER_REGISTRY_USERNAME, DOCKER_REGISTRY_PASSWORD" >&2
             exit 1
           fi
 
@@ -137,7 +139,7 @@ jobs:
             image_tag="$source_sha"
           fi
 
-          image="$REGISTRY_HOST/$IMAGE_NAME:$image_tag"
+          image="$REGISTRY_HOST/$REGISTRY_NAMESPACE/$IMAGE_NAME:$image_tag"
           echo "Docker image: $image"
           echo "Source commit: $source_sha"
 
